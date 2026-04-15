@@ -1,0 +1,85 @@
+Program Version,EnergyPlus, Version 25.1.0-68a4a7c774, YMD=2026.04.15 23:12
+1,5,Environment Title[],Latitude[deg],Longitude[deg],Time Zone[],Elevation[m]
+2,8,Day of Simulation[],Month[],Day of Month[],DST Indicator[1=yes 0=no],Hour[],StartMinute[],EndMinute[],DayType
+3,5,Cumulative Day of Simulation[],Month[],Day of Month[],DST Indicator[1=yes 0=no],DayType  ! When Daily Report Variables Requested
+4,2,Cumulative Days of Simulation[],Month[]  ! When Monthly Report Variables Requested
+5,1,Cumulative Days of Simulation[] ! When Run Period Report Variables Requested
+6,1,Calendar Year of Simulation[] ! When Annual Report Variables Requested
+7,1,Environment,Site Outdoor Air Drybulb Temperature [C] !TimeStep
+8,1,Environment,Site Outdoor Air Relative Humidity [%] !TimeStep
+9,1,Environment,Site Wind Speed [m/s] !TimeStep
+10,1,Environment,Site Wind Direction [deg] !TimeStep
+11,1,Environment,Site Diffuse Solar Radiation Rate per Area [W/m2] !TimeStep
+12,1,Environment,Site Direct Solar Radiation Rate per Area [W/m2] !TimeStep
+13,1,SPACE5-1,Zone People Occupant Count [] !TimeStep
+838,1,SPACE5-1,Zone Air Temperature [C] !TimeStep
+839,1,SPACE5-1,Zone Air Relative Humidity [%] !TimeStep
+902,1,SPACE5-1,Zone Thermostat Heating Setpoint Temperature [C] !TimeStep
+903,1,SPACE5-1,Zone Thermostat Cooling Setpoint Temperature [C] !TimeStep
+1051,1,Whole Building,Facility Total HVAC Electricity Demand Rate [W] !TimeStep
+1313,1,Site,Environmental Impact Total CO2 Emissions Carbon Equivalent Mass [kg] !TimeStep
+1078,1,Electricity:HVAC [J] !TimeStep
+End of Data Dictionary
+1,RUNPERIOD 1,  32.17,-110.88,  -7.00, 809.00
+2,1, 1, 1, 0, 1, 0.00,15.00,Tuesday
+7,4.4
+8,65.0
+9,3.875
+10,145.0
+11,0.0
+12,0.0
+13,0.0
+838,19.952078551521716
+839,28.21567034315664
+902,12.8
+903,40.0
+1051,117.94755741219025
+1313,0.0
+1078,106152.80167097122
+2,1, 1, 1, 0, 1,15.00,30.00,Tuesday
+7,4.8
+8,61.0
+9,4.65
+10,160.0
+11,0.0
+12,0.0
+13,0.0
+838,19.810963307962222
+839,28.269684017603552
+902,17.289064407348633
+903,24.961137771606445
+1051,117.94755741219025
+1313,0.0
+1078,106152.80167097122
+2,1, 1, 1, 0, 1,30.00,45.00,Tuesday
+7,5.199999999999999
+8,57.0
+9,5.425000000000001
+10,175.0
+11,0.0
+12,0.0
+13,0.0
+838,19.672608679539138
+839,28.293969297919997
+902,14.00545883178711
+903,28.909751892089844
+1051,117.94755741219025
+1313,0.0
+1078,106152.80167097122
+2,1, 1, 1, 0, 1,45.00,60.00,Tuesday
+7,5.6
+8,53.0
+9,6.2
+10,190.0
+11,0.0
+12,0.0
+13,0.0
+838,20.151351054291684
+839,27.30726568583999
+902,22.014789581298825
+903,24.40125656127929
+1051,9676.685801591275
+1313,0.0
+1078,8709017.221432146
+End of Data
+ Number of Records Written=          56
