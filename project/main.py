@@ -64,12 +64,13 @@ def train_ppo(env_name='Eplus-5zone-hot-continuous-v1', max_episodes=50):
             step_power_kw = step_power_w / 1000.0
             
             # 【调节天平】
+            weight_temp_linear = 10.0
             # weight_temp: 温度超标的惩罚权重 (调大这个值，AI 就会怕热，拼命开空调)
             # weight_energy: 耗电的惩罚权重 (调大这个值，AI 就会省电)
-            weight_temp = 5.0   # 之前环境默认可能太低了，我们直接拉高到 5 倍惩罚！
-            weight_energy = 0.1 # 适度惩罚耗电
+            weight_temp_sq = 2.0   # 之前环境默认可能太低了，我们直接拉高到 5 倍惩罚！
+            weight_energy = 0.02 # 适度惩罚耗电
 
-            temp_penalty = weight_temp * (step_temp_viol ** 2)
+            temp_penalty = (weight_temp_linear * step_temp_viol) + (weight_temp_sq * (step_temp_viol ** 2))
             power_penalty = weight_energy * step_power_kw
             
             # 计算我们自己的核心 Reward
