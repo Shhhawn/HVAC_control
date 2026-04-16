@@ -53,7 +53,28 @@ def train_ppo(env_name='Eplus-5zone-hot-continuous-v1', max_episodes=50):
             action_env = np.clip(action_env, a_low, a_high) # 双重保险
             
             # 3. 与环境交互
-            next_state, reward, terminated, truncated, info = env.step(action_env)
+            next_state, default_reward, terminated, truncated, info = env.step(action_env)
+
+            # ========== 自定义奖励函数 =============
+            # 获取当前步真实的物理指标
+            step_power_w = info.get('total_power_demand', 0.0) # 瞬时功率 (瓦特)
+            step_temp_viol = info.get('total_temperature_violation', 0.0) # 温度超标度数
+            
+            # 将功率转换为千瓦 (kW)，缩小数值量级，方便与温度对齐
+            step_power_kw = step_power_w / 1000.0
+            
+            # 【调节天平】
+            # weight_temp: 温度超标的惩罚权重 (调大这个值，AI 就会怕热，拼命开空调)
+            # weight_energy: 耗电的惩罚权重 (调大这个值，AI 就会省电)
+            weight_temp = 5.0   # 之前环境默认可能太低了，我们直接拉高到 5 倍惩罚！
+            weight_energy = 0.1 # 适度惩罚耗电
+
+            temp_penalty = weight_temp * (step_temp_viol ** 2)
+            power_penalty = weight_energy * step_power_kw
+            
+            # 计算我们自己的核心 Reward
+            custom_reward = - temp_penalty - power_penalty + deadband_penalty
+            reward = custom_reward / 100.0
 
             # ====== 新增这 3 行探针代码 ======
             # if time_step == 1:
