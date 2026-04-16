@@ -1,0 +1,102 @@
+!EplusEnv
+building_file: 5ZoneAutoDXVAV.epJSON
+weather_files: USA_AZ_Davis-Monthan.AFB.722745_TMY3.epw
+action_space: !GymSpace
+  class: !Class 'gymnasium.spaces.box.Box'
+  arguments:
+    low: !NumpyArray
+      object:
+      - 12.0
+      - 23.25
+      dtype: numpy:float32
+    high: !NumpyArray
+      object:
+      - 23.25
+      - 30.0
+      dtype: numpy:float32
+    shape: !Tuple
+    - 2
+    dtype: numpy:float32
+time_variables:
+- month
+- day_of_month
+- hour
+variables:
+  outdoor_temperature: !Tuple
+  - Site Outdoor Air DryBulb Temperature
+  - Environment
+  outdoor_humidity: !Tuple
+  - Site Outdoor Air Relative Humidity
+  - Environment
+  wind_speed: !Tuple
+  - Site Wind Speed
+  - Environment
+  wind_direction: !Tuple
+  - Site Wind Direction
+  - Environment
+  diffuse_solar_radiation: !Tuple
+  - Site Diffuse Solar Radiation Rate per Area
+  - Environment
+  direct_solar_radiation: !Tuple
+  - Site Direct Solar Radiation Rate per Area
+  - Environment
+  air_temperature: !Tuple
+  - Zone Air Temperature
+  - SPACE5-1
+  air_humidity: !Tuple
+  - Zone Air Relative Humidity
+  - SPACE5-1
+  people_occupant: !Tuple
+  - Zone People Occupant Count
+  - SPACE5-1
+  heating_setpoint: !Tuple
+  - Zone Thermostat Heating Setpoint Temperature
+  - SPACE5-1
+  cooling_setpoint: !Tuple
+  - Zone Thermostat Cooling Setpoint Temperature
+  - SPACE5-1
+  co2_emission: !Tuple
+  - Environmental Impact Total CO2 Emissions Carbon Equivalent Mass
+  - site
+  HVAC_electricity_demand_rate: !Tuple
+  - Facility Total HVAC Electricity Demand Rate
+  - Whole Building
+meters:
+  total_electricity_HVAC: Electricity:HVAC
+actuators:
+  heating_setpoint: !Tuple
+  - Schedule:Compact
+  - Schedule Value
+  - HTG-SETP-SCH
+  cooling_setpoint: !Tuple
+  - Schedule:Compact
+  - Schedule Value
+  - CLG-SETP-SCH
+context: {}
+initial_context: null
+weather_variability: null
+reward: !Class 'sinergym.utils.rewards.LinearReward'
+reward_kwargs:
+  temperature_variables:
+  - air_temperature
+  energy_variables:
+  - HVAC_electricity_demand_rate
+  range_comfort_winter:
+  - 20.0
+  - 23.5
+  range_comfort_summer:
+  - 23.0
+  - 26.0
+  summer_start:
+  - 6
+  - 1
+  summer_final:
+  - 9
+  - 30
+  energy_weight: 0.5
+  lambda_energy: 0.0001
+  lambda_temperature: 1.0
+max_ep_store: 3
+env_name: Eplus-5zone-hot-continuous-v1
+building_config: null
+seed: null
