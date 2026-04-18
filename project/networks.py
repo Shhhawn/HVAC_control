@@ -3,163 +3,144 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class DCNCrossLayer(nn.Module):
-    """
-    手工实现 DCN (Deep & Cross Network) 的交叉层。
-    用于显式捕获温湿度、气象环境与能耗之间的高阶非线性交叉特征。
-    """
     def __init__(self, input_dim):
         super(DCNCrossLayer, self).__init__()
-        # 交叉层的权重和偏置
         self.weight = nn.Parameter(torch.Tensor(input_dim, 1))
         self.bias = nn.Parameter(torch.Tensor(input_dim))
-        
-        # 参数初始化
         nn.init.xavier_uniform_(self.weight)
         nn.init.zeros_(self.bias)
 
     def forward(self, x0, xl):
-        # 核心交叉公式: x_{l+1} = x_0 * (x_l * W_l) + b_l + x_l
-        # xl_w 的维度将是 (batch_size, 1)，通过广播机制与 x0 相乘
         xl_w = torch.matmul(xl, self.weight)
         return x0 * xl_w + self.bias + xl
 
-class MultiChannelGateExtractor(nn.Module):
-    """
-    基于物理机理的特征提取器：物理通道切分 + Gate注意力 + DCN融合
-    """
+# 1. 纯小白提取器 (Vanilla): 什么物理机理都不懂，直接全连接
+class VanillaExtractor(nn.Module):
+    def __init__(self, obs_dim=17, out_dim=128):
+        super(VanillaExtractor, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(obs_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, out_dim),
+            nn.ReLU()
+        )
+    def forward(self, state):
+        # 为了兼容统一接口，返回一个全为 1 的假 Gate 权重
+        dummy_gate = torch.ones(state.shape[0], 3).to(state.device) / 3.0
+        return self.net(state), dummy_gate
+
+# 2. 物理分通道提取器 (Channel Only): 只分通道，没有 Gate 和 DCN
+class ChannelExtractor(nn.Module):
     def __init__(self, obs_dim=17, channel_dim=64):
-        super(MultiChannelGateExtractor, self).__init__()
-        
-        # ---------------------------------------------------------
-        # 【物理通道切分配置】 (严格对齐 Eplus-5zone-hot-continuous-v1)
-        # ---------------------------------------------------------
-        # 通道 1: 温度感知通道 (4维)
-        # [3]室外温度, [9]室内空气温度, [12]供暖设定点, [13]制冷设定点
-        self.idx_t = [3, 9, 12, 13]  
-        
-        # 通道 2: 气象环境与扰动通道 (10维)
-        # [0]月, [1]日, [2]时, [4]室外湿度, [5]风速, [6]风向, [7]散辐射, [8]直辐射, [10]室内湿度, [11]室内人数
-        self.idx_h = [0, 1, 2, 4, 5, 6, 7, 8, 10, 11] 
-        
-        # 通道 3: 能耗反馈通道 (3维)
-        # [14]碳排放, [15]瞬时HVAC功率, [16]累计HVAC耗电量
-        self.idx_e = [14, 15, 16] 
-        
-        # ---------------------------------------------------------
-        # 1. 独立通道特征提取网络
-        # ---------------------------------------------------------
+        super(ChannelExtractor, self).__init__()
+        self.idx_t, self.idx_h, self.idx_e = [3, 9, 12, 13], [0, 1, 2, 4, 5, 6, 7, 8, 10, 11], [14, 15, 16] 
         self.ch_temp = nn.Sequential(nn.Linear(len(self.idx_t), channel_dim), nn.ReLU())
         self.ch_humid = nn.Sequential(nn.Linear(len(self.idx_h), channel_dim), nn.ReLU())
         self.ch_energy = nn.Sequential(nn.Linear(len(self.idx_e), channel_dim), nn.ReLU())
+        self.final_linear = nn.Linear(channel_dim * 3, 128)
         
-        # ---------------------------------------------------------
-        # 2. Gate 注意力网络 (全局视角分配权重)
-        # ---------------------------------------------------------
-        self.gate = nn.Sequential(
-            nn.Linear(obs_dim, 32),
-            nn.ReLU(),
-            nn.Linear(32, 3),
-            nn.Softmax(dim=-1) # 输出 3 个权重，且和为 1
-        )
+    def forward(self, state):
+        f_t = self.ch_temp(state[:, self.idx_t])
+        f_h = self.ch_humid(state[:, self.idx_h])
+        f_e = self.ch_energy(state[:, self.idx_e])
+        x0 = torch.cat([f_t, f_h, f_e], dim=1)
+        dummy_gate = torch.ones(state.shape[0], 3).to(state.device) / 3.0
+        return F.relu(self.final_linear(x0)), dummy_gate
+
+# 3. 门控分通道提取器 (Gate + Channel): 有分通道和注意力，没有 DCN
+class GateExtractor(nn.Module):
+    def __init__(self, obs_dim=17, channel_dim=64):
+        super(GateExtractor, self).__init__()
+        self.idx_t, self.idx_h, self.idx_e = [3, 9, 12, 13], [0, 1, 2, 4, 5, 6, 7, 8, 10, 11], [14, 15, 16] 
+        self.ch_temp = nn.Sequential(nn.Linear(len(self.idx_t), channel_dim), nn.ReLU())
+        self.ch_humid = nn.Sequential(nn.Linear(len(self.idx_h), channel_dim), nn.ReLU())
+        self.ch_energy = nn.Sequential(nn.Linear(len(self.idx_e), channel_dim), nn.ReLU())
+        self.gate = nn.Sequential(nn.Linear(obs_dim, 32), nn.ReLU(), nn.Linear(32, 3), nn.Softmax(dim=-1))
+        self.final_linear = nn.Linear(channel_dim * 3, 128)
         
-        # ---------------------------------------------------------
-        # 3. DCN 交叉特征融合
-        # ---------------------------------------------------------
+    def forward(self, state):
+        f_t, f_h, f_e = self.ch_temp(state[:, self.idx_t]), self.ch_humid(state[:, self.idx_h]), self.ch_energy(state[:, self.idx_e])
+        g_weights = self.gate(state)
+        w_t, w_h, w_e = g_weights[:, 0].unsqueeze(1), g_weights[:, 1].unsqueeze(1), g_weights[:, 2].unsqueeze(1)
+        x0 = torch.cat([f_t * w_t, f_h * w_h, f_e * w_e], dim=1)
+        return F.relu(self.final_linear(x0)), g_weights
+
+# 4. 最终完全体 (Gate + Channel + DCN)
+class MultiChannelGateExtractor(nn.Module):
+    def __init__(self, obs_dim=17, channel_dim=64):
+        super(MultiChannelGateExtractor, self).__init__()
+        self.idx_t, self.idx_h, self.idx_e = [3, 9, 12, 13], [0, 1, 2, 4, 5, 6, 7, 8, 10, 11], [14, 15, 16] 
+        self.ch_temp = nn.Sequential(nn.Linear(len(self.idx_t), channel_dim), nn.ReLU())
+        self.ch_humid = nn.Sequential(nn.Linear(len(self.idx_h), channel_dim), nn.ReLU())
+        self.ch_energy = nn.Sequential(nn.Linear(len(self.idx_e), channel_dim), nn.ReLU())
+        self.gate = nn.Sequential(nn.Linear(obs_dim, 32), nn.ReLU(), nn.Linear(32, 3), nn.Softmax(dim=-1))
         self.cross_dim = channel_dim * 3
         self.cross_layer1 = DCNCrossLayer(self.cross_dim)
         self.cross_layer2 = DCNCrossLayer(self.cross_dim)
-        
-        # 最后降维输出给 Actor 和 Critic
         self.final_linear = nn.Linear(self.cross_dim, 128)
         
     def forward(self, state):
-        # --- 数据切片 ---
-        x_t = state[:, self.idx_t]
-        x_h = state[:, self.idx_h]
-        x_e = state[:, self.idx_e]
-        
-        # --- 独立通道特征提取 ---
-        f_t = self.ch_temp(x_t)
-        f_h = self.ch_humid(x_h)
-        f_e = self.ch_energy(x_e)
-        
-        # --- Gate 网络生成动态权重 ---
-        g_weights = self.gate(state) # shape: (batch, 3)
-        w_t = g_weights[:, 0].unsqueeze(1) # shape: (batch, 1) 以便与特征相乘
-        w_h = g_weights[:, 1].unsqueeze(1)
-        w_e = g_weights[:, 2].unsqueeze(1)
-        
-        # --- 动态加权 (Attention) ---
-        weighted_f_t = f_t * w_t
-        weighted_f_h = f_h * w_h
-        weighted_f_e = f_e * w_e
-        
-        # --- 拼接并进入 DCN 交叉层 ---
-        x0 = torch.cat([weighted_f_t, weighted_f_h, weighted_f_e], dim=1)
-        # x1 = self.cross_layer1(x0, x0)
-        # x2 = self.cross_layer2(x0, x1)
-        
-        # --- 输出融合特征 ---
-        out_features = F.relu(self.final_linear(x0))
-        return out_features, g_weights
+        f_t, f_h, f_e = self.ch_temp(state[:, self.idx_t]), self.ch_humid(state[:, self.idx_h]), self.ch_energy(state[:, self.idx_e])
+        g_weights = self.gate(state)
+        w_t, w_h, w_e = g_weights[:, 0].unsqueeze(1), g_weights[:, 1].unsqueeze(1), g_weights[:, 2].unsqueeze(1)
+        x0 = torch.cat([f_t * w_t, f_h * w_h, f_e * w_e], dim=1)
+        x1 = self.cross_layer1(x0, x0)
+        x2 = self.cross_layer2(x0, x1)
+        return F.relu(self.final_linear(x2)), g_weights
 
+# ----------------- 升级版 ActorCritic -----------------
 class HVACActorCritic(nn.Module):
-    """
-    完整的 PPO 智能体大脑
-    包含 Actor (动作策略) 和 Critic (价值评估)
-    """
-    def __init__(self, obs_dim=17, action_dim=2):
+    # ✅ 新增 extractor_type 参数
+    def __init__(self, obs_dim=17, action_dim=2, temporal_type='gru', stack_size=4, extractor_type='full'):
         super(HVACActorCritic, self).__init__()
+        self.temporal_type = temporal_type
+        self.stack_size = stack_size
         
-        # 挂载你的创新特征提取器
-        self.extractor = MultiChannelGateExtractor(obs_dim)
+        # 🧠 动态挂载特征提取器
+        if extractor_type == 'vanilla':
+            self.extractor = VanillaExtractor(obs_dim)
+        elif extractor_type == 'channel':
+            self.extractor = ChannelExtractor(obs_dim)
+        elif extractor_type == 'gate':
+            self.extractor = GateExtractor(obs_dim)
+        else: # 'full'
+            self.extractor = MultiChannelGateExtractor(obs_dim)
+            
+        extracted_dim = 128
         
-        # Critic 网络: 评估当前状态有多好，输出 V 值
-        self.critic = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1)
-        )
-        
-        # Actor 网络: 输出动作均值
-        # Sinergym 连续动作环境需要归一化到 [-1, 1] 的动作，所以最后一层用 Tanh
-        self.actor_mean = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, action_dim),
-            nn.Tanh() 
-        )
-        # 动作的方差(Log Std)，用于控制探索力度，设为可学习的独立参数
-        # self.actor_logstd = nn.Parameter(torch.zeros(1, action_dim))
+        # ====== 时序处理器 (默认使用最强的 GRU) ======
+        if temporal_type == 'gru':
+            self.rnn = nn.GRU(input_size=extracted_dim, hidden_size=64, batch_first=True)
+            final_dim = 64
+        elif temporal_type == 'lstm':
+            self.rnn = nn.LSTM(input_size=extracted_dim, hidden_size=64, batch_first=True)
+            final_dim = 64
+        else: # 'mlp'
+            final_dim = extracted_dim
+
+        # ====== Actor & Critic ======
+        self.critic = nn.Sequential(nn.Linear(final_dim, 64), nn.ReLU(), nn.Linear(64, 1))
+        self.actor_mean = nn.Sequential(nn.Linear(final_dim, 64), nn.ReLU(), nn.Linear(64, action_dim), nn.Tanh())
         self.actor_logstd = nn.Parameter(torch.full((1, action_dim), -0.5))
 
     def forward(self, state):
-        # 获取特征和 Gate 权重（权重可用于你写论文时画“注意力热力图”）
-        features, gate_weights = self.extractor(state)
+        B, S, D = state.shape
+        state_flat = state.view(B * S, D)
+        features_flat, g_weights_flat = self.extractor(state_flat)
+        features = features_flat.view(B, S, -1)
+        g_weights = g_weights_flat.view(B, S, 3)
         
-        v_value = self.critic(features)
-        
-        action_mean = self.actor_mean(features)
+        if self.temporal_type in ['lstm', 'gru']:
+            rnn_out, _ = self.rnn(features)
+            x = rnn_out[:, -1, :] 
+            gate_w = g_weights[:, -1, :] 
+        else: 
+            x = features.squeeze(1) 
+            gate_w = g_weights.squeeze(1)
+            
+        v_value = self.critic(x)
+        action_mean = self.actor_mean(x)
         action_logstd = self.actor_logstd.expand_as(action_mean)
         action_std = torch.exp(action_logstd)
         
-        return action_mean, action_std, v_value, gate_weights
-
-# ================= 单元测试 =================
-if __name__ == "__main__":
-    # 模拟环境吐出的一个 batch 的真实维度数据: (batch_size=4, obs_dim=17)
-    dummy_state = torch.randn(4, 17) 
-    
-    # 初始化你的模型，假设动作维度为 2 (例如：供暖设定点调节、制冷设定点调节)
-    model = HVACActorCritic(obs_dim=17, action_dim=2)
-    
-    mean, std, v, weights = model(dummy_state)
-    
-    print("✅ 网络架构编译与前向传播测试通过！")
-    print(f"输入状态维度: {dummy_state.shape}")
-    print(f"Actor 输出动作均值维度: {mean.shape} (应当为 batch_size x 2)")
-    print(f"Critic 输出价值 V 维度: {v.shape} (应当为 batch_size x 1)")
-    print(f"Gate 注意力权重维度: {weights.shape} (应当为 batch_size x 3通道)")
-    
-    # 简单查看一下第一个样本的权重分配
-    print(f"示例 Gate 权重 (通道1-温度, 通道2-环境, 通道3-能耗): {weights[0].detach().numpy()}")
+        return action_mean, action_std, v_value, gate_w

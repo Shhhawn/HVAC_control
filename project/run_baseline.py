@@ -42,7 +42,9 @@ def run_rule_based_baseline(env_name='Eplus-5zone-hot-continuous-v1', episodes=1
             ep_comfort += info.get('total_temperature_violation', 0)
             step += 1
             
-        print(f"Baseline Episode {ep+1} 结束 | 总步数: {step} | 累计奖励: {ep_reward:.2f} | 累计总能耗: {ep_energy/1e6:.2f} MJ | 温度超标总计: {ep_comfort:8.2f} ℃")
+        avg_temp = ep_comfort / 35040.0
+        ep_energy_kwh = (ep_energy / 1e6) / 3.6
+        print(f"Baseline Episode {ep+1} 结束 | 总步数: {step} | 累计奖励: {ep_energy_kwh:.2f} | 能耗: {ep_energy_kwh:8.2f} 度 | 温度超标总计: {ep_comfort:8.2f} ℃ | 单步平均偏离: {avg_temp:4.3f} ℃")
         
     env.close()
 
