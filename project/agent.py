@@ -12,6 +12,7 @@ class RolloutBuffer:
         self.states.clear(); self.actions.clear(); self.logprobs.clear()
         self.rewards.clear(); self.values.clear(); self.is_terminals.clear()
 
+
 class PPOAgent:
     def __init__(self, obs_dim=17, action_dim=2, lr=1e-4, gamma=0.99, K_epochs=10, eps_clip=0.2, 
                  temporal_type='mlp', stack_size=1, extractor_type='full'): # ✅ 新增参数
