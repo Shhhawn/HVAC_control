@@ -97,7 +97,7 @@ class MultiChannelGateExtractor(nn.Module):
         self.ch_energy = nn.Sequential(nn.Linear(len(self.idx_e), channel_dim), nn.ReLU())
         self.gate = nn.Sequential(nn.Linear(obs_dim, 32), nn.ReLU(), nn.Linear(32, 3), nn.Softmax(dim=-1))
         self.cross_dim = channel_dim * 3
-        if DCN == 'V2':
+        if dcn_version == 'V2':
             self.cross_layer1 = DCNv2CrossLayer(self.cross_dim)
             self.cross_layer2 = DCNv2CrossLayer(self.cross_dim)
         else:
