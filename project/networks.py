@@ -130,7 +130,7 @@ class HVACActorCritic(nn.Module):
         elif extractor_type == 'gate':
             self.extractor = GateExtractor(obs_dim)
         else: # 'full'
-            self.extractor = MultiChannelGateExtractor(obs_dim, DCN=dcn_version)
+            self.extractor = MultiChannelGateExtractor(obs_dim, dcn_version=dcn_version)
             
         extracted_dim = 128
         
