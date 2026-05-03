@@ -14,6 +14,28 @@ class DCNCrossLayer(nn.Module):
         xl_w = torch.matmul(xl, self.weight)
         return x0 * xl_w + self.bias + xl
 
+class DCNv2CrossLayer(nn.Module):
+    def __init__(self, input_dim):
+        super(DCNv2CrossLayer, self).__init__()
+        self.weight = nn.Parameter(torch.Tensor(input_dim, input_dim))
+        self.bias = nn.Parameter(torch.Tensor(input_dim))
+        
+        # 使用 Xavier 初始化矩阵，防止训练初期梯度爆炸
+        nn.init.xavier_uniform_(self.weight)
+        nn.init.zeros_(self.bias)
+
+    def forward(self, x0, xl):
+        # 1. 矩阵乘法：(Batch, D) @ (D, D) -> (Batch, D)
+        # 这对应公式里的 W_l * x_l
+        xl_w = torch.matmul(xl, self.weight) 
+        
+        # 2. 加上 bias
+        xl_w_b = xl_w + self.bias
+        
+        # 3. 哈达玛积（按位乘法）与残差连接
+        # 这对应公式里的 x_0 ⊙ (W_l * x_l + b_l) + x_l
+        return x0 * xl_w_b + xl
+
 # 1. 纯小白提取器 (Vanilla): 什么物理机理都不懂，直接全连接
 class VanillaExtractor(nn.Module):
     def __init__(self, obs_dim=17, out_dim=128):
@@ -67,7 +89,7 @@ class GateExtractor(nn.Module):
 
 # 4. 最终完全体 (Gate + Channel + DCN)
 class MultiChannelGateExtractor(nn.Module):
-    def __init__(self, obs_dim=17, channel_dim=64):
+    def __init__(self, obs_dim=17, channel_dim=64, dcn_version='V1'):
         super(MultiChannelGateExtractor, self).__init__()
         self.idx_t, self.idx_h, self.idx_e = [3, 9, 12, 13], [0, 1, 2, 4, 5, 6, 7, 8, 10, 11], [14, 15, 16] 
         self.ch_temp = nn.Sequential(nn.Linear(len(self.idx_t), channel_dim), nn.ReLU())
@@ -75,8 +97,12 @@ class MultiChannelGateExtractor(nn.Module):
         self.ch_energy = nn.Sequential(nn.Linear(len(self.idx_e), channel_dim), nn.ReLU())
         self.gate = nn.Sequential(nn.Linear(obs_dim, 32), nn.ReLU(), nn.Linear(32, 3), nn.Softmax(dim=-1))
         self.cross_dim = channel_dim * 3
-        self.cross_layer1 = DCNCrossLayer(self.cross_dim)
-        self.cross_layer2 = DCNCrossLayer(self.cross_dim)
+        if DCN == 'V2':
+            self.cross_layer1 = DCNv2CrossLayer(self.cross_dim)
+            self.cross_layer2 = DCNv2CrossLayer(self.cross_dim)
+        else:
+            self.cross_layer1 = DCNCrossLayer(self.cross_dim)
+            self.cross_layer2 = DCNCrossLayer(self.cross_dim)
         self.final_linear = nn.Linear(self.cross_dim, 128)
         
     def forward(self, state):
@@ -90,13 +116,13 @@ class MultiChannelGateExtractor(nn.Module):
 
 # ----------------- 升级版 ActorCritic -----------------
 class HVACActorCritic(nn.Module):
-    # ✅ 新增 extractor_type 参数
-    def __init__(self, obs_dim=17, action_dim=2, temporal_type='gru', stack_size=4, extractor_type='full'):
+    # 新增 extractor_type 参数
+    def __init__(self, obs_dim=17, action_dim=2, temporal_type='gru', stack_size=4, extractor_type='full', dcn_version='V1'):
         super(HVACActorCritic, self).__init__()
         self.temporal_type = temporal_type
         self.stack_size = stack_size
         
-        # 🧠 动态挂载特征提取器
+        # 动态挂载特征提取器
         if extractor_type == 'vanilla':
             self.extractor = VanillaExtractor(obs_dim)
         elif extractor_type == 'channel':
@@ -104,7 +130,7 @@ class HVACActorCritic(nn.Module):
         elif extractor_type == 'gate':
             self.extractor = GateExtractor(obs_dim)
         else: # 'full'
-            self.extractor = MultiChannelGateExtractor(obs_dim)
+            self.extractor = MultiChannelGateExtractor(obs_dim, DCN=dcn_version)
             
         extracted_dim = 128
         
