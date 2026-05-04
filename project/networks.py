@@ -328,52 +328,6 @@ class HVACActorCritic(nn.Module):
         self.critic = nn.Sequential(nn.Linear(final_dim, 64), nn.ReLU(), nn.Linear(64, 1))
         self.actor_mean = nn.Sequential(nn.Linear(final_dim, 64), nn.ReLU(), nn.Linear(64, action_dim), nn.Tanh())
         self.actor_logstd = nn.Parameter(torch.full((1, action_dim), -0.5))
-        
-        # 新增：物理动力学预测头 (Dynamics Prediction Head)
-        # 输入：提取出的高维特征 (final_dim) + 当前执行的动作 (action_dim)
-        # 输出：预测下一时刻的物理状态 (假设环境堆叠展开后是 stack_size * obs_dim)
-        self.dynamics_head = nn.Sequential(
-            nn.Linear(final_dim + action_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, stack_size * obs_dim) 
-        )
-    
-    
-    # 👑 新增一个专属方法，供 PPO 更新时计算辅助 Loss 使用
-    def evaluate(self, state, action):
-        B, S, D = state.shape
-        
-        if self.extractor_type in ['st_coupled', 'ode_coupled']:
-            x, gate_w = self.extractor(state)
-        else:
-            state_flat = state.view(B * S, D)
-            features_flat, g_weights_flat = self.extractor(state_flat)
-            features = features_flat.view(B, S, -1)
-            g_weights = g_weights_flat.view(B, S, 3)
-            if self.temporal_type in ['lstm', 'gru']:
-                rnn_out, _ = self.rnn(features)
-                x = rnn_out[:, -1, :] 
-                gate_w = g_weights[:, -1, :]
-            else:
-                x = features.squeeze(1)
-                gate_w = g_weights.squeeze(1)
-
-        v_value = self.critic(x)
-        action_mean = self.actor_mean(x)
-        action_logstd = self.actor_logstd.expand_as(action_mean)
-        action_std = torch.exp(action_logstd)
-        
-        from torch.distributions import Normal
-        dist = Normal(action_mean, action_std)
-        action_logprobs = dist.log_prob(action).sum(dim=-1)
-        dist_entropy = dist.entropy().sum(dim=-1)
-        
-        # 👑 物理预测逻辑：传入当前特征 x 和 动作 action，预测未来的环境状态
-        # 注意：这里的 action 是没有被 tanh 缩放的原始网络输出动作
-        pred_next_state = self.dynamics_head(torch.cat([x, action], dim=-1))
-        
-        return action_logprobs, torch.squeeze(v_value), dist_entropy, pred_next_state
-
 
     def forward(self, state):
         B, S, D = state.shape
