@@ -88,7 +88,7 @@ if __name__ == "__main__":
     
     # 填入你消融实验中跑出来的 FULL 完全体的权重路径
     # (确保该路径存在，如果是别的位置请自行修改)
-    weights_path = "./results/Architecture_Ablation/Extractor_FULL/best_ppo_weights.pth"
+    weights_path = "./results/SafeRL/SafePPO_FULL_Eps0.5/safe_ppo_full_weights.pth"
     
     # 三大考场：炎热、寒冷、混合
     environments = [

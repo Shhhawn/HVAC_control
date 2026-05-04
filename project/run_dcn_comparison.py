@@ -1,3 +1,10 @@
+# ======================
+# 用于比较DCN-V1和DCN-V2的效果
+# seed = 42，V1的最高平均reward为-8612.22；V2的最高平均reward为-9473.88；
+# seed = 10，V1的最高平均reward为-8654.13；V2的最高平均reward为-8300.32；
+# ======================
+
+
 import os
 import shutil
 import glob
